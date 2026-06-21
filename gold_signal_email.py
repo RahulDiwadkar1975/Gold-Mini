@@ -15,12 +15,15 @@ quarterly constant.
 NOT financial advice. Technicals run on global gold (GC=F) as a proxy for MCX.
 """
 
-import os, json, datetime, smtplib, ssl
+import os, json, io, datetime, smtplib, ssl
 from email.message import EmailMessage
 from zoneinfo import ZoneInfo
 import requests
 import pandas as pd
 import yfinance as yf
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 # ------------------------------------------------------------------ CONFIG
 # Email (set these as environment variables / repo secrets)
@@ -153,6 +156,64 @@ def confidence_for(total):
     if a >= 20: return "Moderate"
     return "Low"
 
+# ------------------------------------------------------------------ HTML EMAIL
+CHART_CID = "goldchart"
+
+def signal_color(sig):
+    if sig in ("BUY CALL", "BULL CALL SPREAD", "LONG FUTURE + HEDGE"): return "#1b8a5a"
+    if sig in ("BUY PUT", "BEAR PUT SPREAD"): return "#c0392b"
+    return "#6b6b76"
+
+def build_chart():
+    """6-month gold price chart with 20/50 DMA, returned as PNG bytes (None on failure)."""
+    try:
+        c = hist(TICKERS["gold"], "6mo")["Close"]
+        s20, s50 = c.rolling(20).mean(), c.rolling(50).mean()
+        fig, ax = plt.subplots(figsize=(7, 3), dpi=130)
+        ax.plot(c.index, c.values, color="#1a1a2e", linewidth=1.6, label="Gold (GC=F)")
+        ax.plot(s20.index, s20.values, color="#e94560", linewidth=1.1, label="20DMA")
+        ax.plot(s50.index, s50.values, color="#0f8b8d", linewidth=1.1, label="50DMA")
+        ax.legend(loc="upper left", fontsize=8, frameon=False)
+        ax.set_title("Gold (COMEX proxy) - last 6 months", fontsize=10)
+        ax.tick_params(labelsize=8)
+        ax.grid(alpha=0.25)
+        fig.tight_layout()
+        buf = io.BytesIO(); fig.savefig(buf, format="png"); plt.close(fig)
+        return buf.getvalue()
+    except Exception as e:
+        print("chart error:", e); return None
+
+def build_html(date, total, sig, conf, prev, changed, rows, has_chart):
+    color = signal_color(sig)
+    changed_line = f" &nbsp;&middot;&nbsp; changed from <b>{prev}</b>" if changed else ""
+    chart_tag = (f'<img src="cid:{CHART_CID}" style="width:100%;display:block;" />'
+                 if has_chart else "")
+
+    def row(nm, s, note):
+        rc = "#1b8a5a" if s > 0 else ("#c0392b" if s < 0 else "#9a9aa3")
+        return (f'<tr><td style="padding:5px 10px;color:#333;font-size:13px;">{nm}</td>'
+                f'<td style="padding:5px 10px;text-align:right;color:{rc};font-weight:600;'
+                f'font-size:13px;">{s:+d}</td>'
+                f'<td style="padding:5px 10px;color:#9a9aa3;font-size:12px;">{note}</td></tr>')
+
+    rows_html = "".join(row(*r) for r in rows)
+    return f"""\
+<html><body style="margin:0;padding:16px;background:#f2f2f6;font-family:Segoe UI,Arial,sans-serif;">
+<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:10px;overflow:hidden;
+            border:1px solid #e8e8ee;">
+  <div style="background:{color};color:#fff;padding:18px 20px;">
+    <div style="font-size:12px;opacity:.85;">GOLD MINI SIGNAL &nbsp;&middot;&nbsp; {date} &nbsp;&middot;&nbsp; 09:00 IST</div>
+    <div style="font-size:24px;font-weight:700;margin-top:4px;">{sig}</div>
+    <div style="font-size:13px;margin-top:3px;opacity:.95;">Total {total:+d} &nbsp;&middot;&nbsp; Confidence: {conf}{changed_line}</div>
+  </div>
+  {chart_tag}
+  <table style="width:100%;border-collapse:collapse;margin-top:2px;">{rows_html}</table>
+  <div style="padding:12px 20px;color:#a0a0aa;font-size:11px;border-top:1px solid #eee;">
+    Auto inputs from free data; OI/PCR/MaxPain/FII are manual. Not financial advice.
+  </div>
+</div>
+</body></html>"""
+
 # ------------------------------------------------------------------ STATE
 STATE = "state.json"
 def load_state():
@@ -165,7 +226,7 @@ def save_state(sig, total, date):
         json.dump({"signal": sig, "total": total, "date": date}, f)
 
 # ------------------------------------------------------------------ SEND
-def send_email(subject, body):
+def send_email(subject, body, html_body=None, chart_png=None):
     if not (EMAIL_FROM and EMAIL_PASS):
         print("Email not configured. Subject:", subject, "\n" + body); return
     msg = EmailMessage()
@@ -173,6 +234,10 @@ def send_email(subject, body):
     msg["To"] = EMAIL_TO
     msg["Subject"] = subject
     msg.set_content(body)
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
+        if chart_png:
+            msg.get_payload()[-1].add_related(chart_png, "image", "png", cid=f"<{CHART_CID}>")
     try:
         ctx = ssl.create_default_context()
         with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=ctx) as s:
@@ -206,8 +271,11 @@ def main():
             f"Auto inputs from free data; OI/PCR/MaxPain/FII are manual. "
             f"Not financial advice.")
 
+    chart_png = build_chart()
+    html = build_html(date, total, sig, conf, prev, changed, rows, has_chart=bool(chart_png))
+
     print(subject); print(body)
-    send_email(subject, body)
+    send_email(subject, body, html, chart_png)
     save_state(sig, total, date)
 
 if __name__ == "__main__":
