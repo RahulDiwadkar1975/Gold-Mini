@@ -1,0 +1,38 @@
+name: Gold Mini Daily Signal (Email)
+
+on:
+  schedule:
+    # 09:00 IST = 03:30 UTC, Monday-Friday. (Actions cron can run a few min late.)
+    - cron: '30 3 * * 1-5'
+  workflow_dispatch:   # lets you run it on demand to test
+
+permissions:
+  contents: write      # needed so it can save state.json to detect signal changes
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run signal
+        env:
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_TO:   ${{ secrets.EMAIL_TO }}
+        run: python gold_signal_email.py
+
+      - name: Save signal state
+        run: |
+          git config user.name  "github-actions"
+          git config user.email "actions@github.com"
+          git add state.json || true
+          git commit -m "update signal state" || echo "no change to commit"
+          git push || echo "nothing to push"
