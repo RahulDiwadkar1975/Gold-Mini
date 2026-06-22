@@ -160,9 +160,9 @@ def confidence_for(total):
 CHART_CID = "goldchart"
 
 def signal_color(sig):
-    if sig in ("BUY CALL", "BULL CALL SPREAD", "LONG FUTURE + HEDGE"): return "#1b8a5a"
-    if sig in ("BUY PUT", "BEAR PUT SPREAD"): return "#c0392b"
-    return "#6b6b76"
+    if sig in ("BUY CALL", "BULL CALL SPREAD", "LONG FUTURE + HEDGE"): return "#15803d"
+    if sig in ("BUY PUT", "BEAR PUT SPREAD"): return "#b91c1c"
+    return "#52525b"
 
 def build_chart():
     """6-month gold price chart with 20/50 DMA, returned as PNG bytes (None on failure)."""
@@ -185,32 +185,93 @@ def build_chart():
 
 def build_html(date, total, sig, conf, prev, changed, rows, has_chart):
     color = signal_color(sig)
-    changed_line = f" &nbsp;&middot;&nbsp; changed from <b>{prev}</b>" if changed else ""
-    chart_tag = (f'<img src="cid:{CHART_CID}" style="width:100%;display:block;" />'
-                 if has_chart else "")
+    changed_badge = (
+        f'<div style="margin-top:10px;font-size:12px;color:#8a8f9c;">'
+        f'Changed from <span style="color:#11182b;font-weight:600;">{prev}</span></div>'
+    ) if changed else ""
 
-    def row(nm, s, note):
-        rc = "#1b8a5a" if s > 0 else ("#c0392b" if s < 0 else "#9a9aa3")
-        return (f'<tr><td style="padding:5px 10px;color:#333;font-size:13px;">{nm}</td>'
-                f'<td style="padding:5px 10px;text-align:right;color:{rc};font-weight:600;'
-                f'font-size:13px;">{s:+d}</td>'
-                f'<td style="padding:5px 10px;color:#9a9aa3;font-size:12px;">{note}</td></tr>')
+    chart_block = (
+        f'<div style="padding:4px 24px 0 24px;">'
+        f'<img src="cid:{CHART_CID}" style="width:100%;display:block;border-radius:8px;'
+        f'border:1px solid #ebedf1;" /></div>'
+    ) if has_chart else ""
 
-    rows_html = "".join(row(*r) for r in rows)
+    def row(nm, s, note, idx):
+        rc = "#15803d" if s > 0 else ("#b91c1c" if s < 0 else "#8a8f9c")
+        bg = "#fafbfc" if idx % 2 else "#ffffff"
+        return (f'<tr style="background:{bg};">'
+                f'<td style="padding:9px 0;color:#2c2f36;font-size:13px;'
+                f'border-bottom:1px solid #f1f2f5;">{nm}</td>'
+                f'<td align="right" style="padding:9px 0;color:{rc};font-weight:700;'
+                f'font-size:13px;border-bottom:1px solid #f1f2f5;">{s:+d}</td>'
+                f'<td style="padding:9px 0 9px 16px;color:#a7abb6;font-size:12px;'
+                f'border-bottom:1px solid #f1f2f5;">{note}</td></tr>')
+
+    rows_html = "".join(row(nm, s, note, i) for i, (nm, s, note) in enumerate(rows))
+
     return f"""\
-<html><body style="margin:0;padding:16px;background:#f2f2f6;font-family:Segoe UI,Arial,sans-serif;">
-<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:10px;overflow:hidden;
-            border:1px solid #e8e8ee;">
-  <div style="background:{color};color:#fff;padding:18px 20px;">
-    <div style="font-size:12px;opacity:.85;">GOLD MINI SIGNAL &nbsp;&middot;&nbsp; {date} &nbsp;&middot;&nbsp; 09:00 IST</div>
-    <div style="font-size:24px;font-weight:700;margin-top:4px;">{sig}</div>
-    <div style="font-size:13px;margin-top:3px;opacity:.95;">Total {total:+d} &nbsp;&middot;&nbsp; Confidence: {conf}{changed_line}</div>
+<html><body style="margin:0;padding:24px 12px;background:#eef0f4;
+            font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
+<div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;
+            overflow:hidden;border:1px solid #e3e5eb;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#11182b;">
+    <tr>
+      <td style="padding:16px 24px;color:#ffffff;font-size:13px;font-weight:700;
+                 letter-spacing:.02em;">GOLD MINI SIGNAL</td>
+      <td align="right" style="padding:16px 24px;color:#8a90a3;font-size:12px;">
+        {date} &middot; ~09:07 IST</td>
+    </tr>
+  </table>
+
+  <div style="padding:24px 24px 4px 24px;">
+    <span style="display:inline-block;background:{color};color:#ffffff;font-size:13px;
+                 font-weight:700;padding:7px 16px;border-radius:999px;letter-spacing:.02em;">
+      {sig}</span>
+    {changed_badge}
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">
+      <tr>
+        <td style="width:50%;">
+          <div style="font-size:11px;color:#8a8f9c;text-transform:uppercase;
+                      letter-spacing:.04em;">Total Score</div>
+          <div style="font-size:28px;font-weight:700;color:#11182b;margin-top:2px;">
+            {total:+d}</div>
+        </td>
+        <td style="width:50%;">
+          <div style="font-size:11px;color:#8a8f9c;text-transform:uppercase;
+                      letter-spacing:.04em;">Confidence</div>
+          <div style="font-size:28px;font-weight:700;color:#11182b;margin-top:2px;">
+            {conf}</div>
+        </td>
+      </tr>
+    </table>
   </div>
-  {chart_tag}
-  <table style="width:100%;border-collapse:collapse;margin-top:2px;">{rows_html}</table>
-  <div style="padding:12px 20px;color:#a0a0aa;font-size:11px;border-top:1px solid #eee;">
-    Auto inputs from free data; OI/PCR/MaxPain/FII are manual. Not financial advice.
+
+  {chart_block}
+
+  <div style="padding:20px 24px 0 24px;">
+    <div style="font-size:11px;color:#8a8f9c;text-transform:uppercase;
+                letter-spacing:.04em;margin-bottom:8px;">Score Breakdown</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+      <tr>
+        <td style="padding:0 0 8px 0;color:#a7abb6;font-size:11px;
+                   text-transform:uppercase;border-bottom:1px solid #ebedf1;">Indicator</td>
+        <td align="right" style="padding:0 0 8px 0;color:#a7abb6;font-size:11px;
+                   text-transform:uppercase;border-bottom:1px solid #ebedf1;">Score</td>
+        <td style="padding:0 0 8px 16px;color:#a7abb6;font-size:11px;
+                   text-transform:uppercase;border-bottom:1px solid #ebedf1;">Note</td>
+      </tr>
+      {rows_html}
+    </table>
   </div>
+
+  <div style="padding:20px 24px 24px 24px;margin-top:4px;">
+    <div style="font-size:11px;color:#a7abb6;line-height:1.6;">
+      Automated inputs from free market data; OI, PCR, Max Pain and FII are manual entries.
+      This is decision-support output, not financial advice.
+    </div>
+  </div>
+
 </div>
 </body></html>"""
 
@@ -262,7 +323,7 @@ def main():
     change_line = f"\n*** SIGNAL CHANGED: {prev} -> {sig} ***" if changed else ""
 
     breakdown = "\n".join(f"{nm}: {s:+d} ({note})" for nm, s, note in rows)
-    body = (f"GOLD MINI SIGNAL  {date} 09:00 IST\n"
+    body = (f"GOLD MINI SIGNAL  {date} ~09:07 IST\n"
             f"Total Score: {total}\n"
             f"Signal: {sig}\n"
             f"Confidence: {conf}{change_line}\n"

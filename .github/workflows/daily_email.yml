@@ -2,8 +2,10 @@ name: Gold Mini Daily Signal (Email)
 
 on:
   schedule:
-    # 09:00 IST = 03:30 UTC, Monday-Friday. (Actions cron can run a few min late.)
-    - cron: '30 3 * * 1-5'
+    # ~09:07 IST = 03:37 UTC, Monday-Friday. Off the round half-hour mark on
+    # purpose - GitHub's scheduler queue is most congested at :00/:15/:30/:45,
+    # which can delay or skip round-time runs. (Actions cron can still run late.)
+    - cron: '37 3 * * 1-5'
   workflow_dispatch:   # lets you run it on demand to test
 
 permissions:
